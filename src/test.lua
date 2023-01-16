@@ -1,19 +1,19 @@
 local arangodb = require("arangodb")
 local json = require('cjson')
 
-local db = arangodb.new({
+local client = arangodb.new({
     endpoint = "http://127.0.0.1:8529",
     username = "root",
     password = "openSesame",
-    db = "debug"
+    database = "debug"
 })
 
-print('You are running on ArangoDB v.' .. db:version())
+print('You are running on ArangoDB v.' .. client:version())
 
 -- query
 
 local success, results = pcall(function()
-    return db:query("FOR i IN 1..10 RETURN i")
+    return client.db.query("FOR i IN 1..10 RETURN i")
 end)
 
 if success then
@@ -37,7 +37,7 @@ local page_num = 1
 while true do
     -- execute a query
     local successPaginated, resultsPaginated = pcall(function()
-        return db:query("FOR doc IN users LIMIT " .. (page_num - 1) * page_size .. ", " .. page_size .. " RETURN doc")
+        return client.db.query("FOR doc IN users LIMIT " .. (page_num - 1) * page_size .. ", " .. page_size .. " RETURN doc")
     end)
 
     if not successPaginated then

@@ -24,7 +24,7 @@ Create a Lua file, for example `test.lua`:
 ```lua
 local arangodb = require("arangodb")
 
-local db = arangodb.new({
+local client = arangodb.new({
     endpoint = "http://127.0.0.1:8529",
     username = "root",
     password = "openSesame",
@@ -32,7 +32,7 @@ local db = arangodb.new({
 })
 
 local success, results = pcall(function()
-   return db:query("FOR i IN 1..10 RETURN i")
+    return client.db.query("FOR i IN 1..10 RETURN i")
 end)
 
 if success then
