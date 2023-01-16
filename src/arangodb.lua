@@ -1,25 +1,39 @@
 local json = require("cjson")
 local http = require("resty.http")
+local base64 = require ("base64")
 
 local arangodb = {}
+arangodb.__index = arangodb
 
-function arangodb:new(options)
-    -- Verify that all fields are set
-    if not options.host or not options.port or not options.username or not options.password or not options.db then
-        error("Missing required field in options")
+function arangodb.new(options)
+    options = options or {}
+    local self = setmetatable({}, arangodb)
+
+    if not options.endpoint or options.endpoint == "" then
+        error("Endpoint is not provided or empty")
+    end
+    if not options.username or options.username == "" then
+        if not options.token or options.token == "" then
+            error("Username and Token both are not provided or empty")
+        end
+    end
+    if not options.password or options.password == "" then
+        if not options.token or options.token == "" then
+            error("Password and Token both are not provided or empty")
+        end
+    end
+    if not options.db or options.db == "" then
+        error("DB name is not provided or empty")
     end
 
-    -- Create a new object and set options as its properties
-    local obj = { host = options.host, port = options.port, username = options.username, password = options.password, db = options.db, secure = options.secure }
-
-    if options.token then
-        obj.token = options.token
-    end
-
-    setmetatable(obj, self)
-    self.__index = self
-    return obj
+    self.username = options.username
+    self.password = options.password
+    self.token = options.token
+    self.db = options.db
+    self.endpoint = options.endpoint
+    return self
 end
+
 
 function arangodb:connect()
     -- Connection code goes here
@@ -27,27 +41,44 @@ function arangodb:connect()
     -- Use self.token if it exists
 end
 
-function arangodb:query(aql)
-    -- Execute the given AQL query on the connected ArangoDB server
-    -- Use self.host, self.port, self.username, self.password and self.db for connection
-    -- Use self.token if it exists
-    -- Return the result of the query
-end
-
 function arangodb:version()
     local httpc = http.new()
     httpc:set_timeout(3000)
-    local protocol = self.secure and "https" or "http"
-    local res, err = httpc:request_uri(string.format("%s://%s:%s/_api/version", protocol, self.host, self.port),{
-        headers = {
-            ["Authorization"] = self.token and "bearer ".. self.token or "Basic " .. mime.b64(self.username .. ":" .. self.password)
-        }
+    local headers = {}
+    if self.token then
+        headers["Authorization"] = "bearer ".. self.token
+    elseif self.username and self.password then
+        headers["Authorization"] = "Basic " .. base64.encode(self.username .. ":" .. self.password)
+    end
+    local res, err = httpc:request_uri(string.format("%s/_api/version", self.endpoint),{
+        headers = headers
     })
     if not res then
         error("Failed to get version from server: " .. err)
     end
     local data = json.decode(res.body)
     return data.version
+end
+
+function arangodb:query(aql)
+    local httpc = http.new()
+    httpc:set_timeout(3000)
+    local headers = { ["Content-Type"] = "application/json" }
+    if self.token then
+        headers["Authorization"] = "bearer ".. self.token
+    else
+        headers["Authorization"] = "Basic " .. base64.encode(self.username .. ":" .. self.password)
+    end
+    local res, err = httpc:request_uri(string.format("%s/_db/%s/_api/cursor", self.endpoint, self.db), {
+        method = "POST",
+        body = json.encode({ query = aql }),
+        headers = headers
+    })
+    if not res then
+        error("Failed to execute AQL query: " .. err)
+    end
+    local data = json.decode(res.body)
+    return data.result
 end
 
 
