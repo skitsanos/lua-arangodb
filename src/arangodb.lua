@@ -34,13 +34,6 @@ function arangodb.new(options)
     return self
 end
 
-
-function arangodb:connect()
-    -- Connection code goes here
-    -- Use self.host, self.port, self.username, self.password and self.db for connection
-    -- Use self.token if it exists
-end
-
 function arangodb:version()
     local httpc = http.new()
     httpc:set_timeout(3000)
