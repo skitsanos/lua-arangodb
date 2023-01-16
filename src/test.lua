@@ -15,6 +15,21 @@ print(json.encode(client.db.list()))
 print(json.encode(client.db.create('demo')))
 print(json.encode(client.db.drop('demo')))
 
+local users = {}
+users[1] = { username = "user1", passwd = "password1", active = true }
+
+client.db.create(
+        "my_database",
+        {
+            sharding = "single",
+            replicationFactor = 2,
+            writeConcern = 2
+        },
+        users
+)
+
+print(json.encode(client.db.drop('my_database')))
+
 -- query
 
 local success, results = pcall(function()
