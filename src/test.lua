@@ -1,0 +1,5 @@
+local arangodb = require("arangodb")
+local arango = arangodb:new({host = "127.0.0.1", port = 8529, username = "root", password = "openSesame", db = "mydb"})
+arango:connect()
+local version = arango:version()
+print(version)

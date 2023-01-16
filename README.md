@@ -1,0 +1,3 @@
+### Dependencies
+ - lua-cjson
+ - luasocket
