@@ -1,6 +1,7 @@
 ### Dependencies
  - lua-cjson
  - base64
+ - lua-resty-http
 
 ### Testing
 

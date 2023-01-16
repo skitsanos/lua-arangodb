@@ -7,14 +7,21 @@ local db = arangodb.new({
     db = "debug"
 })
 
-local version = db:version()
-print('You are running on ArangoDB v.' .. version)
+print('You are running on ArangoDB v.' .. db:version())
 
 -- query
 
-local results = db:query("FOR i IN 1..10 RETURN i")
+local success, results = pcall(function()
+    return db:query("FOR i IN 1..10 RETURN i")
+end)
 
--- print the results
-for _, v in ipairs(results) do
-    print(v)
+if success then
+    -- print the results
+    for _, v in ipairs(results) do
+        print(v)
+    end
+else
+    -- print the error message
+    print(results)
 end
+

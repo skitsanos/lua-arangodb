@@ -66,18 +66,21 @@ function arangodb:query(aql)
     local headers = { ["Content-Type"] = "application/json" }
     if self.token then
         headers["Authorization"] = "bearer ".. self.token
-    else
+    elseif self.username and self.password then
         headers["Authorization"] = "Basic " .. base64.encode(self.username .. ":" .. self.password)
     end
     local res, err = httpc:request_uri(string.format("%s/_db/%s/_api/cursor", self.endpoint, self.db), {
         method = "POST",
-        body = json.encode({ query = aql }),
-        headers = headers
+        headers = headers,
+        body = json.encode({ query = aql })
     })
     if not res then
-        error("Failed to execute AQL query: " .. err)
+        error("Failed to execute query: " .. err)
     end
     local data = json.decode(res.body)
+    if data.error then
+        error("Failed to execute query: " .. data.errorMessage)
+    end
     return data.result
 end
 
