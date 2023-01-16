@@ -2,8 +2,10 @@ local json = require("cjson")
 local http = require("resty.http")
 local base64 = require("base64")
 
+local arangodb_db_list = require("arangodb-db-list")
 local arangodb_db_query = require("arangodb-db-query")
 local arangodb_db_create = require("arangodb-db-create")
+local arangodb_db_drop = require("arangodb-db-drop")
 
 local arangodb = {}
 arangodb.__index = arangodb
@@ -36,16 +38,20 @@ function arangodb.new(options)
     self.database = options.database
     self.endpoint = options.endpoint
 
-    --self.db.query = function(aql)
-    --    return arangodb_db_query.query(self, aql)
-    --end
+    self.db.drop = function(name)
+        return arangodb_db_drop.drop(self, name)
+    end
+
+    self.db.list = function()
+        return arangodb_db_list.list(self)
+    end
 
     self.db.query = function(aql)
         return arangodb_db_query.query(self, aql)
     end
 
-    self.db.create = function(name)
-        return arangodb_db_create.create(self, name)
+    self.db.create = function(name, dbOptions, dbUsers)
+        return arangodb_db_create.create(self, name, dbOptions, dbUsers)
     end
 
     return self

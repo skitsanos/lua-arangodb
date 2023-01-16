@@ -2,9 +2,9 @@ local json = require("cjson")
 local http = require("resty.http")
 local base64 = require("base64")
 
-local arangodb_db_create = {}
+local arangodb_db_drop = {}
 
-function arangodb_db_create.create(self, name, options, users)
+function arangodb_db_drop.drop(self, name)
     local httpc = http.new()
     httpc:set_timeout(3000)
     local headers = { ["Content-Type"] = "application/json" }
@@ -13,26 +13,18 @@ function arangodb_db_create.create(self, name, options, users)
     elseif self.username and self.password then
         headers["Authorization"] = "Basic " .. base64.encode(self.username .. ":" .. self.password)
     end
-    local payload = { name = name }
-    if options then
-        payload.options = options
-    end
-    if users then
-        payload.users = users
-    end
-    local res, err = httpc:request_uri(string.format("%s/_api/database", self.endpoint), {
-        method = "POST",
-        headers = headers,
-        body = json.encode(payload)
+    local res, err = httpc:request_uri(string.format("%s/_api/database/%s", self.endpoint, name), {
+        method = "DELETE",
+        headers = headers
     })
     if not res then
-        error("Failed to create database: " .. err)
+        error("Failed to drop database: " .. err)
     end
     local data = json.decode(res.body)
     if data.error then
-        error("Failed to create database: " .. data.errorMessage)
+        error("Failed to drop database: " .. data.errorMessage)
     end
     return data
 end
 
-return arangodb_db_create
+return arangodb_db_drop

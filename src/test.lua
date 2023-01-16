@@ -10,6 +10,11 @@ local client = arangodb.new({
 
 print('You are running on ArangoDB v.' .. client:version())
 
+print(json.encode(client.db.list()))
+
+print(json.encode(client.db.create('demo')))
+print(json.encode(client.db.drop('demo')))
+
 -- query
 
 local success, results = pcall(function()
