@@ -24,4 +24,3 @@ else
     -- print the error message
     print(results)
 end
-

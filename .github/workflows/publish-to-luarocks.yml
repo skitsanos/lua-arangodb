@@ -1,0 +1,71 @@
+name: LuaRocks Release
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+    paths-ignore:
+      - '.github/**/*.yml'
+      - '.gitignore'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: "Set latest version"
+        id: set-latest-tag
+        run: |
+          currentVersion=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" https://api.github.com/repos/${{github.repository}}/tags | jq -r 'sort_by(.name | split(".") | map(tonumber)) | reverse | .[0].name')
+          echo "LATEST_VERSION=$currentVersion" >> $GITHUB_ENV
+      - run: echo "Current version is ${{env.LATEST_VERSION}}"
+
+      - name: "Setup Lua"
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lua5.1 luarocks
+          sudo luarocks install lua-cjson
+      - name: "Install semver"
+        run: |
+          # Download the script and save it to /usr/local/bin
+          wget -O /usr/local/bin/semver https://raw.githubusercontent.com/fsaintjacques/semver-tool/master/src/semver
+          # Make script executable
+          chmod +x /usr/local/bin/semver
+          # Prove it works
+          semver --version
+      - name: Increment version
+        id: new_version
+        run: |
+          NEXT_VERSION=$(semver bump patch ${{env.LATEST_VERSION}})
+          echo "NEXT_VERSION=$NEXT_VERSION" >> $GITHUB_OUTPUT
+      - run: echo "Next version is ${{ steps.new_version.outputs.NEXT_VERSION }}"
+
+      - name: Create new tag
+        run: |
+          git config --global user.email "noreply@skitsanos.com"
+          git config --global user.name "ReleaseBot"
+          git tag -a ${{ steps.new_version.outputs.NEXT_VERSION }} -m "release version ${{ steps.new_version.outputs.NEXT_VERSION }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push new tag
+        run: git push origin ${{ steps.new_version.outputs.NEXT_VERSION }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create rockspec
+        run: luarocks write_rockspec --lua-versions 5.1 --license MIT --homepage https://github.com/skitsanos/lua-arangodb lua-arangodb ${{ steps.new_version.outputs.NEXT_VERSION }} .
+
+      - name: Package rock
+        run: luarocks pack lua-arangodb-${{ steps.new_version.outputs.NEXT_VERSION }}-1.rockspec
+
+      - name: Upload rock
+        env:
+          LUAROCKS_USERNAME: ${{ secrets.LUAROCKS_USERNAME }}
+          LUAROCKS_PASSWORD: ${{ secrets.LUAROCKS_TOKEN }}
+        run: |
+          echo "Uploading rock to LuaRocks"      
+          luarocks upload --api-key=$LUAROCKS_PASSWORD lua-arangodb-${{ steps.new_version.outputs.NEXT_VERSION }}-1.rockspec
