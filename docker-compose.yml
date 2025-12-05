@@ -6,6 +6,7 @@ services:
     restart: always
     container_name: "lua-arangodb-dev"
     image: "arangodb/arangodb:latest"
+    command: ["arangod", "--experimental-vector-index=true"]
     ports:
       - "8529:8529"
     environment:

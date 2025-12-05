@@ -18,6 +18,12 @@ Index.TYPE_ZKD = "zkd"
 Index.TYPE_MDI = "mdi"
 Index.TYPE_MDI_PREFIXED = "mdi-prefixed"
 Index.TYPE_INVERTED = "inverted"
+Index.TYPE_VECTOR = "vector"
+
+-- Vector index metrics
+Index.METRIC_COSINE = "cosine"
+Index.METRIC_L2 = "l2"
+Index.METRIC_INNER_PRODUCT = "innerProduct"
 
 function Index.new(client)
     local self = setmetatable({}, Index)
@@ -285,6 +291,87 @@ function Index:createInverted(collection, fields, options)
     options = options or {}
     options.type = Index.TYPE_INVERTED
     options.fields = fields
+    return self:create(collection, options)
+end
+
+--[[
+    Create a vector index for semantic similarity search (v3.12.4+)
+
+    Vector indexes use the Faiss library to index vector embeddings.
+    NOTE: Requires --vector-index startup option enabled on server.
+    NOTE: Documents with vector data must exist BEFORE creating the index.
+
+    @param collection (string): Collection name
+    @param field (string): Attribute path containing the vector embedding array
+    @param params (table): Vector index parameters
+        - metric (string, required): Similarity metric - "cosine", "l2", or "innerProduct"
+        - dimension (number, required): Vector dimension (array length)
+        - nLists (number, required): Number of Voronoi cells (~N/15 where N=doc count)
+        - defaultNProbe (number, optional): Neighboring centroids to search (default: 1)
+        - trainingIterations (number, optional): Training iterations (default: 25)
+        - factory (string, optional): Faiss factory string for advanced config
+    @param options (table, optional): Additional index options
+        - name (string): Index name
+        - sparse (boolean): Exclude docs with null/missing vectors (default: false)
+        - parallelism (number): Threads for indexing (default: 2)
+        - inBackground (boolean): Create in background (default: false)
+    @return table: Created index info
+
+    @example
+        -- Create a cosine similarity index for 384-dimensional embeddings
+        client.index:createVector("documents", "embedding", {
+            metric = "cosine",
+            dimension = 384,
+            nLists = 100,
+            defaultNProbe = 10
+        })
+
+        -- Query with AQL:
+        -- FOR doc IN documents
+        --   SORT APPROX_NEAR_COSINE(doc.embedding, @queryVector) DESC
+        --   LIMIT 10
+        --   RETURN doc
+]]
+function Index:createVector(collection, field, params, options)
+    if not collection or collection == "" then
+        error("Index: collection is required")
+    end
+    if not field or field == "" then
+        error("Index: field is required")
+    end
+    if not params then
+        error("Index: params is required")
+    end
+    if not params.metric then
+        error("Index: params.metric is required (cosine, l2, or innerProduct)")
+    end
+    if not params.dimension then
+        error("Index: params.dimension is required")
+    end
+    if not params.nLists then
+        error("Index: params.nLists is required")
+    end
+
+    options = options or {}
+    options.type = Index.TYPE_VECTOR
+    options.fields = { field }
+    options.params = {
+        metric = params.metric,
+        dimension = params.dimension,
+        nLists = params.nLists
+    }
+
+    -- Optional params
+    if params.defaultNProbe then
+        options.params.defaultNProbe = params.defaultNProbe
+    end
+    if params.trainingIterations then
+        options.params.trainingIterations = params.trainingIterations
+    end
+    if params.factory then
+        options.params.factory = params.factory
+    end
+
     return self:create(collection, options)
 end
 

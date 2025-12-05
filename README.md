@@ -287,12 +287,112 @@ client.index:createZKD(collection, fields, options)
 client.index:createMDI(collection, fields, options)
 client.index:createInverted(collection, fields, options)
 
+-- Vector index for semantic similarity search (v3.12.4+)
+-- NOTE: Requires --vector-index startup option and documents must exist first
+client.index:createVector(collection, field, params, options)
+
 -- Drop index
 client.index:drop(indexId)
 
 -- Ensure index exists
 local idx, created = client.index:ensure(collection, definition)
 ```
+
+#### Vector Search (v3.12.4+)
+
+ArangoDB supports vector similarity search for semantic/AI applications. Vector indexes use the Faiss library for approximate nearest neighbor (ANN) search.
+
+**Requirements:**
+- Server must be started with `--experimental-vector-index=true`
+- Documents with vector embeddings must exist **before** creating the index
+- Once enabled, vector-index cannot be disabled (permanent RocksDB change)
+
+**Creating a Vector Index:**
+
+```lua
+-- Documents must have embeddings first
+for i = 1, 1000 do
+    client.document:create("documents", {
+        text = "Document " .. i,
+        embedding = generate_embedding(...)  -- 384-dim vector
+    })
+end
+
+-- Then create the vector index
+local idx = client.index:createVector("documents", "embedding", {
+    metric = "cosine",           -- "cosine", "l2", or "innerProduct"
+    dimension = 384,             -- vector array length
+    nLists = 66,                 -- ~N/15 where N is document count
+    defaultNProbe = 10,          -- neighboring centroids to search (higher = slower but better)
+    trainingIterations = 25      -- optional, default: 25
+})
+```
+
+**Vector Search Functions:**
+
+| Function | Metric | Sort Order | Value Range | Version |
+|----------|--------|------------|-------------|---------|
+| `APPROX_NEAR_COSINE()` | cosine | DESC | [-1, 1] | v3.12.4+ |
+| `APPROX_NEAR_L2()` | l2 | ASC | [0, ∞) | v3.12.4+ |
+| `APPROX_NEAR_INNER_PRODUCT()` | innerProduct | DESC | (-∞, ∞) | v3.12.6+ |
+| `COSINE_SIMILARITY()` | - | DESC | [-1, 1] | v3.9.0+ (exact, no index) |
+
+**Query Examples:**
+
+```lua
+-- Approximate search using vector index (fast, for large datasets)
+local results = client.query:execute([[
+    FOR doc IN documents
+      SORT APPROX_NEAR_COSINE(doc.embedding, @query) DESC
+      LIMIT 10
+      RETURN doc
+]], { query = query_vector })
+
+-- With similarity score and custom nProbe
+local results = client.query:execute([[
+    FOR doc IN documents
+      LET similarity = APPROX_NEAR_COSINE(doc.embedding, @query, { nProbe: 20 })
+      SORT similarity DESC
+      LIMIT 10
+      RETURN MERGE({ similarity }, doc)
+]], { query = query_vector })
+
+-- Pre-filtering (v3.12.6+)
+local results = client.query:execute([[
+    FOR doc IN documents
+      FILTER doc.category == @category
+      SORT APPROX_NEAR_COSINE(doc.embedding, @query) DESC
+      LIMIT 10
+      RETURN doc
+]], { query = query_vector, category = "tech" })
+
+-- Exact cosine similarity (no index needed, for small datasets)
+local results = client.query:execute([[
+    FOR doc IN documents
+      LET sim = COSINE_SIMILARITY(doc.embedding, @query)
+      FILTER sim > 0.8
+      SORT sim DESC
+      LIMIT 10
+      RETURN { doc, similarity: sim }
+]], { query = query_vector })
+
+-- Batch similarity with 2D array
+local results = client.query:execute([[
+    RETURN COSINE_SIMILARITY(@vectors, @query)
+]], {
+    vectors = {{0,1,0,1}, {1,0,0,1}, {1,1,1,0}},
+    query = {1,1,1,1}
+})
+-- Returns: [0.707, 0.707, 0.866]
+```
+
+**Metric Selection:**
+
+| Metric | Use Case | Notes |
+|--------|----------|-------|
+| `cosine` | Text embeddings, normalized vectors | Auto-normalizes vectors |
+| `l2` | Image features, spatial data | Euclidean distance |
+| `innerProduct` | When magnitude matters | Faster than cosine (no normalization) |
 
 ### Graph Operations (`client.graph`)
 
@@ -548,7 +648,7 @@ client.foxx:runTests(mount, options)
 
 ## Testing with Docker/Podman
 
-The project includes a docker-compose setup for testing:
+The project includes a docker-compose setup for testing. ArangoDB is configured with `--experimental-vector-index=true` to enable vector search features.
 
 ```shell
 # Start ArangoDB and OpenResty
