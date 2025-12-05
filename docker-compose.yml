@@ -33,6 +33,8 @@ services:
       - ./nginx/conf/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf:ro
       - ./nginx/lua:/app/nginx/lua:ro
       - ./nginx/logs:/usr/local/openresty/nginx/logs
+    env_file:
+      - .env
     environment:
       - ARANGO_ENDPOINT=http://arangodb:8529
       - ARANGO_USERNAME=root

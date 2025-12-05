@@ -12,6 +12,8 @@ A comprehensive, modular ArangoDB client library for OpenResty/Lua with full HTT
 - Stream transactions support
 - Graph operations (Gharial API)
 - ArangoSearch views and analyzers
+- Vector indexes for semantic similarity search (v3.12.4+)
+- OpenAI-compatible embeddings generation (OpenAI, Ollama, vLLM, etc.)
 - Foxx microservices management
 - User and permission management
 - Cluster operations support
@@ -644,6 +646,101 @@ client.foxx:readme(mount)
 client.foxx:swagger(mount)
 client.foxx:download(mount)
 client.foxx:runTests(mount, options)
+```
+
+### Embeddings (`arangodb.Embeddings`)
+
+The Embeddings module provides vector embedding generation via OpenAI-compatible APIs (OpenAI, Ollama, vLLM, LocalAI, etc.). This is a standalone client that can be used independently of the ArangoDB connection.
+
+```lua
+local arangodb = require("arangodb")
+
+-- Create embeddings client (uses OPENAI_API_KEY env var by default)
+local embeddings = arangodb.Embeddings.new({
+    api_key = "sk-...",                    -- Optional if OPENAI_API_KEY env var is set
+    base_url = "https://api.openai.com/v1", -- Default
+    model = "text-embedding-3-small",       -- Default
+    dimensions = 256,                       -- Optional: reduce dimensions (supported models only)
+    timeout = 30000,                        -- Request timeout in ms
+    ssl_verify = false                      -- SSL verification (default: false)
+})
+
+-- Generate single embedding
+local vector = embeddings:create("Hello world")
+-- Returns: {0.023, -0.041, 0.012, ...} (1536 dimensions for text-embedding-3-small)
+
+-- Generate batch embeddings (more efficient for multiple texts)
+local vectors = embeddings:createBatch({"Hello", "World", "Test"})
+-- Returns: {{...}, {...}, {...}}
+
+-- Get embedding with metadata (usage stats)
+local result = embeddings:createWithMetadata("Hello world")
+-- Returns: {
+--   embeddings = {{index=0, embedding={...}}},
+--   model = "text-embedding-3-small",
+--   usage = {prompt_tokens=2, total_tokens=2}
+-- }
+
+-- Get embedding dimension for current model
+local dim = embeddings:getDimension()
+-- Returns: 1536 (for text-embedding-3-small)
+
+-- List available embedding models (OpenAI only)
+local models = embeddings:listModels()
+```
+
+**Using with Ollama or other local providers:**
+
+```lua
+local embeddings = arangodb.Embeddings.new({
+    base_url = "http://localhost:11434/v1",
+    model = "nomic-embed-text",
+    api_key = "ollama"  -- Ollama doesn't require a real API key
+})
+
+local vector = embeddings:create("Search query")
+```
+
+**Complete Vector Search Workflow:**
+
+```lua
+local arangodb = require("arangodb")
+
+-- 1. Create ArangoDB client
+local client = arangodb.new({
+    endpoint = "http://localhost:8529",
+    username = "root",
+    password = "password"
+})
+
+-- 2. Create embeddings client
+local embeddings = arangodb.Embeddings.new()
+
+-- 3. Store documents with embeddings
+local texts = {"Document about cats", "Document about dogs", "Document about birds"}
+for i, text in ipairs(texts) do
+    local vector = embeddings:create(text)
+    client.document:create("documents", {
+        text = text,
+        embedding = vector
+    })
+end
+
+-- 4. Create vector index (after documents exist)
+client.index:createVector("documents", "embedding", {
+    metric = "cosine",
+    dimension = 1536,
+    nLists = 1  -- Small value for few documents
+})
+
+-- 5. Semantic search
+local query_vector = embeddings:create("Tell me about felines")
+local results = client.query:execute([[
+    FOR doc IN documents
+      SORT APPROX_NEAR_COSINE(doc.embedding, @query) DESC
+      LIMIT 5
+      RETURN doc.text
+]], { query = query_vector })
 ```
 
 ## Testing with Docker/Podman

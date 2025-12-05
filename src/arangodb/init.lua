@@ -46,6 +46,7 @@ local Admin = require("arangodb.admin")
 local Analyzer = require("arangodb.analyzer")
 local View = require("arangodb.view")
 local Foxx = require("arangodb.foxx")
+local Embeddings = require("arangodb.embeddings")
 
 local ArangoDB = {}
 ArangoDB.__index = ArangoDB
@@ -393,5 +394,41 @@ function ArangoDB:isAvailable()
     end)
     return ok
 end
+
+--[[
+    Create a new Embeddings client for generating vector embeddings
+    This is a standalone client for OpenAI-compatible embedding APIs
+
+    @param options (table): Configuration options
+        - api_key (string): API key (or set OPENAI_API_KEY env var)
+        - base_url (string, optional): API base URL (default: "https://api.openai.com/v1")
+        - model (string, optional): Embedding model (default: "text-embedding-3-small")
+        - dimensions (number, optional): Output dimensions (for models that support it)
+        - timeout (number, optional): Request timeout in ms (default: 30000)
+    @return Embeddings client instance
+
+    @example
+        local arangodb = require("arangodb")
+
+        -- Create embeddings client
+        local embeddings = arangodb.Embeddings.new({
+            api_key = "sk-...",
+            model = "text-embedding-3-small"
+        })
+
+        -- Generate single embedding
+        local vector = embeddings:create("Hello world")
+
+        -- Generate batch embeddings
+        local vectors = embeddings:createBatch({"Hello", "World"})
+
+        -- Use with Ollama or other compatible APIs
+        local ollama = arangodb.Embeddings.new({
+            base_url = "http://localhost:11434/v1",
+            model = "nomic-embed-text",
+            api_key = "ollama"  -- Ollama doesn't require a real key
+        })
+]]
+ArangoDB.Embeddings = Embeddings
 
 return ArangoDB

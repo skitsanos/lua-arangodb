@@ -630,9 +630,50 @@ elseif test_module == "view" then
     -- Cleanup
     client.collection:drop(test_collection)
 
+-- ============================================================================
+-- Embeddings Module Tests
+-- ============================================================================
+elseif test_module == "embeddings" then
+    local api_key = os.getenv("OPENAI_API_KEY")
+
+    if not api_key or api_key == "" then
+        ngx.say("Skipping embeddings tests: OPENAI_API_KEY not set")
+    else
+        local embeddings = arangodb.Embeddings.new({
+            api_key = api_key
+        })
+
+        runTest("Create Single Embedding", function()
+            local vector = embeddings:create("Hello world")
+            assert_type("table", vector)
+            assert_true(#vector > 0, "Embedding vector should not be empty")
+        end)
+
+        runTest("Create Batch Embeddings", function()
+            local vectors = embeddings:createBatch({"Hello", "World"})
+            assert_type("table", vectors)
+            assert_equal(2, #vectors)
+            assert_type("table", vectors[1])
+            assert_type("table", vectors[2])
+        end)
+
+        runTest("Create With Metadata", function()
+            local result = embeddings:createWithMetadata("Test text")
+            assert_not_nil(result.embeddings)
+            assert_not_nil(result.model)
+            assert_not_nil(result.usage)
+        end)
+
+        runTest("Get Dimension", function()
+            local dim = embeddings:getDimension()
+            assert_type("number", dim)
+            assert_true(dim > 0, "Dimension should be positive")
+        end)
+    end
+
 else
     ngx.say("Unknown module: " .. test_module)
-    ngx.say("Available modules: database, collection, document, index, query, graph, transaction, user, admin, analyzer, view")
+    ngx.say("Available modules: database, collection, document, index, query, graph, transaction, user, admin, analyzer, view, embeddings")
 end
 
 -- ============================================================================
