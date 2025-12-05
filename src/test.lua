@@ -1,81 +1,160 @@
-local arangodb = require("arangodb")
-local json = require('cjson')
+--[[
+    Test script for lua-arangodb client
+    Run with: resty -I /path/to/src src/test.lua
+]]
 
+local arangodb = require("arangodb")
+local json = require("cjson")
+
+-- Create client
 local client = arangodb.new({
     endpoint = "http://127.0.0.1:8529",
     username = "root",
     password = "openSesame",
-    database = "debug"
+    database = "_system"
 })
 
-print('You are running on ArangoDB v.' .. client:version())
+print("=== ArangoDB Client Test ===\n")
 
-print(json.encode(client.db.list()))
+-- Server info
+local version = client:version()
+print("Server version: " .. version.version)
+print("Server: " .. version.server)
+print("License: " .. version.license)
 
-print(json.encode(client.db.create('demo')))
-print(json.encode(client.db.drop('demo')))
+local engine = client:engine()
+print("Storage engine: " .. engine.name)
 
-local users = {}
-users[1] = { username = "user1", passwd = "password1", active = true }
+-- Database operations
+print("\n--- Database Operations ---")
+local databases = client.db:list()
+print("Databases: " .. json.encode(databases))
 
-client.db.create(
-        "my_database",
-        {
-            sharding = "single",
-            replicationFactor = 2,
-            writeConcern = 2
-        },
-        users
+-- Create test database
+local test_db = "lua_test_" .. os.time()
+print("Creating database: " .. test_db)
+client.db:create(test_db)
+
+-- Switch to test database
+client:useDatabase(test_db)
+print("Switched to database: " .. client:getDatabase())
+
+-- Collection operations
+print("\n--- Collection Operations ---")
+local col_name = "test_collection"
+print("Creating collection: " .. col_name)
+client.collection:create(col_name)
+
+local collections = client.collection:list(true)
+print("Collections: " .. json.encode(collections))
+
+-- Document operations
+print("\n--- Document Operations ---")
+
+-- Create single document
+local doc = client.document:create(col_name, {
+    name = "Alice",
+    age = 30,
+    email = "alice@example.com"
+}, { returnNew = true })
+print("Created document: " .. doc._key)
+
+-- Create multiple documents
+local docs = client.document:createMany(col_name, {
+    { name = "Bob", age = 25 },
+    { name = "Charlie", age = 35 },
+    { name = "Diana", age = 28 }
+})
+print("Created " .. #docs .. " documents")
+
+-- Get document
+local retrieved = client.document:get(col_name, doc._key)
+print("Retrieved: " .. json.encode(retrieved))
+
+-- Update document
+client.document:update(col_name, doc._key, {
+    age = 31,
+    updated = true
+})
+print("Updated document")
+
+-- Query operations
+print("\n--- Query Operations ---")
+
+-- Simple query
+local results = client.query:execute(
+    "FOR doc IN @@collection RETURN doc",
+    { ["@collection"] = col_name }
 )
+print("Query returned " .. #results .. " documents")
 
-print(json.encode(client.db.drop('my_database')))
+-- Query with filter
+local filtered = client.query:execute(
+    "FOR doc IN @@collection FILTER doc.age >= @minAge RETURN doc",
+    { ["@collection"] = col_name, minAge = 30 }
+)
+print("Filtered query returned " .. #filtered .. " documents")
 
--- query
+-- Query with pagination (all results)
+local all_results = client.query:all(
+    "FOR i IN 1..100 RETURN i",
+    nil,
+    { batchSize = 25 }
+)
+print("Paginated query returned " .. #all_results .. " results")
 
-local success, results = pcall(function()
-    return client.db.query("FOR i IN 1..10 RETURN i")
-end)
+-- Index operations
+print("\n--- Index Operations ---")
 
-if success then
-    -- print the results
-    for _, v in ipairs(results) do
-        print(v)
-    end
-else
-    -- print the error message
-    print('ERR: ' .. results)
-end
+local indexes = client.index:list(col_name)
+print("Indexes: " .. #indexes)
 
+-- Create persistent index
+local idx = client.index:createPersistent(col_name, {"name"}, {
+    name = "idx_name",
+    unique = false
+})
+print("Created index: " .. idx.name .. " (type: " .. idx.type .. ")")
 
--- page size
-local page_size = 25
+-- Transaction operations
+print("\n--- Transaction Operations ---")
 
--- starting page number
-local page_num = 1
+-- JavaScript transaction
+local tx_result = client.transaction:execute({
+    collections = { read = { col_name } },
+    action = [[
+        function() {
+            var db = require('@arangodb').db;
+            return db._query('FOR doc IN ]] .. col_name .. [[ RETURN 1').toArray().length;
+        }
+    ]]
+})
+print("Transaction result: " .. tostring(tx_result))
 
--- loop until all pages are retrieved
-while true do
-    -- execute a query
-    local successPaginated, resultsPaginated = pcall(function()
-        return client.db.query("FOR doc IN users LIMIT " .. (page_num - 1) * page_size .. ", " .. page_size .. " RETURN doc")
-    end)
+-- Stream transaction
+local tx = client.transaction:begin({ write = { col_name } })
+print("Started stream transaction: " .. tx.id)
 
-    if not successPaginated then
-        print('ERR: ' .. resultsPaginated)
-        break
-    else
-        -- print the results
-        print('Getting results, page #' .. page_num .. ', size: ' .. #resultsPaginated)
-        for _, v in ipairs(resultsPaginated) do
-            print(json.encode(v))
-        end
+local status = client.transaction:status(tx.id)
+print("Transaction status: " .. status.status)
 
-        -- if the number of returned documents is less than page size, we have reached the end
-        if #resultsPaginated < page_size then
-            break
-        end
+client.transaction:abort(tx.id)
+print("Aborted transaction")
 
-        -- increment page number
-        page_num = page_num + 1
-    end
-end
+-- Cleanup
+print("\n--- Cleanup ---")
+
+-- Delete document
+client.document:delete(col_name, doc._key)
+print("Deleted document")
+
+-- Drop collection
+client.collection:drop(col_name)
+print("Dropped collection")
+
+-- Switch back to _system and drop test database
+client:useDatabase("_system")
+client.db:drop(test_db)
+print("Dropped database: " .. test_db)
+
+print("\n=== All tests completed successfully! ===")

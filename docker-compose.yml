@@ -1,5 +1,7 @@
 version: "3.9"
+
 services:
+  # ArangoDB Database
   arangodb:
     restart: always
     container_name: "lua-arangodb-dev"
@@ -8,3 +10,44 @@ services:
       - "8529:8529"
     environment:
       - ARANGO_ROOT_PASSWORD=openSesame
+    volumes:
+      - arangodb_data:/var/lib/arangodb3
+    healthcheck:
+      test: ["CMD", "arangosh", "--server.authentication", "false", "--javascript.execute-string", "db._version()"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # OpenResty Test Server
+  openresty:
+    container_name: "lua-arangodb-openresty"
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./src:/app/src:ro
+      - ./nginx/conf/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf:ro
+      - ./nginx/lua:/app/nginx/lua:ro
+      - ./nginx/logs:/usr/local/openresty/nginx/logs
+    environment:
+      - ARANGO_ENDPOINT=http://arangodb:8529
+      - ARANGO_USERNAME=root
+      - ARANGO_PASSWORD=openSesame
+      - ARANGO_DATABASE=_system
+    depends_on:
+      - arangodb
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  arangodb_data:
+
+networks:
+  default:
+    name: lua-arangodb-network
