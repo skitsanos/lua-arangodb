@@ -50,6 +50,54 @@ local Foxx = require("arangodb.foxx")
 local ArangoDB = {}
 ArangoDB.__index = ArangoDB
 
+-- Percent-encode a query component (fallback when ngx.escape_uri is unavailable)
+local function encode_uri_component(value)
+    if ngx and ngx.escape_uri then
+        return ngx.escape_uri(value)
+    end
+    return tostring(value):gsub("([^%w%-%._~])", function(c)
+        return string.format("%%%02X", string.byte(c))
+    end)
+end
+
+-- Build a query string with proper encoding and support for array values
+local function build_query_string(params)
+    if not params then
+        return nil
+    end
+
+    local parts = {}
+
+    local function append(key, val)
+        if val == nil then
+            return
+        end
+
+        if type(val) == "boolean" then
+            val = val and "true" or "false"
+        end
+
+        if type(val) == "table" then
+            for _, item in ipairs(val) do
+                append(key, item)
+            end
+            return
+        end
+
+        table.insert(parts, encode_uri_component(key) .. "=" .. encode_uri_component(val))
+    end
+
+    for k, v in pairs(params) do
+        append(k, v)
+    end
+
+    if #parts == 0 then
+        return nil
+    end
+
+    return "?" .. table.concat(parts, "&")
+end
+
 -- Default configuration
 local DEFAULT_CONFIG = {
     timeout = 30000,        -- 30 seconds
@@ -214,17 +262,9 @@ function ArangoDB:request(method, path, options)
     url = url .. path
 
     -- Add query parameters
-    if options.query then
-        local query_parts = {}
-        for k, v in pairs(options.query) do
-            if type(v) == "boolean" then
-                v = v and "true" or "false"
-            end
-            table.insert(query_parts, k .. "=" .. tostring(v))
-        end
-        if #query_parts > 0 then
-            url = url .. "?" .. table.concat(query_parts, "&")
-        end
+    local query_string = build_query_string(options.query)
+    if query_string then
+        url = url .. query_string
     end
 
     -- Prepare request body
